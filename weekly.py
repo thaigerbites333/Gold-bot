@@ -9,11 +9,11 @@
 from collections import Counter, OrderedDict
 from datetime import datetime, timedelta, timezone
 
-from . import config
-from .analysis import add_indicators, label_of, nearest, swing_levels, tf_trend
-from .charts import candle_chart
-from .news_guide import scenario_text
-from .report import CSS, e, sgn, tdt
+import config
+from analysis import add_indicators, label_of, nearest, swing_levels, tf_trend
+from charts import candle_chart
+from news_guide import scenario_text
+from report import CSS, e, sgn, tdt
 
 TH_DAY_FULL = ["วันจันทร์", "วันอังคาร", "วันพุธ", "วันพฤหัสบดี", "วันศุกร์", "วันเสาร์", "วันอาทิตย์"]
 TH_MONTH = ["", "ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."]

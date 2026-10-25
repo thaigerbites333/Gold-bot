@@ -3,7 +3,7 @@ import os
 import smtplib
 from email.message import EmailMessage
 
-from . import config
+import config
 
 
 def send(subject, html_body, attachments=()):

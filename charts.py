@@ -7,7 +7,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 import matplotlib.dates as mdates  # noqa: E402
 
-from . import config  # noqa: E402
+import config  # noqa: E402
 
 UP, DN = "#15803d", "#b91c1c"
 INK, MUTED, GRID = "#1f2937", "#6b7280", "#e5e7eb"

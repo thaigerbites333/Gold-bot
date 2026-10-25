@@ -15,7 +15,7 @@ import re
 import sys
 from datetime import datetime, timedelta, timezone
 
-from goldbot import ai_summary, analysis, config, mailer, market, news, news_guide, report, weekly
+import ai_summary, analysis, config, mailer, market, news, news_guide, report, weekly
 
 
 def market_open(now):
@@ -52,7 +52,7 @@ def save_state(st):
 
 def gather(demo):
     if demo:
-        from goldbot import demo as D
+        import demo as D
         frames, source = D.frames()
         inter, heads, cal = D.intermarket(), news.rank_headlines(D.headlines()), D.calendar()
     else:
@@ -171,7 +171,7 @@ def cmd_alert(args):
 def cmd_weekly(args):
     """สรุปประจำสัปดาห์ — ส่งวันอาทิตย์ก่อนเที่ยง LA"""
     if args.demo:
-        from goldbot import demo as D
+        import demo as D
         frames, source = D.frames()
         inter, heads, cal = D.intermarket(), news.rank_headlines(D.headlines(), 72), D.week_calendar()
     else:

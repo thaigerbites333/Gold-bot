@@ -2,7 +2,7 @@
 import json
 import requests
 
-from . import config
+import config
 
 
 def summarize(a, headlines, events):

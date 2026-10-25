@@ -4,8 +4,8 @@ from datetime import datetime, timedelta, timezone
 import numpy as np
 import pandas as pd
 
-from .market import resample
-from .news_guide import guide_event
+from market import resample
+from news_guide import guide_event
 
 
 def _walk(n, start, vol, drift, seed, freq):
@@ -66,7 +66,7 @@ def calendar():
 
 def week_calendar():
     """ปฏิทินจำลองทั้งสัปดาห์ (เวลา 05:30 LA ประมาณข่าวสหรัฐ)"""
-    from .config import TZ_LOCAL
+    from config import TZ_LOCAL
     base = datetime.now(TZ_LOCAL).replace(hour=5, minute=30, second=0, microsecond=0)
     plan = [(1, "ISM Manufacturing PMI", "High", "49.5", "49.1", 7), (2, "JOLTS Job Openings", "High", "7.40M", "7.23M", 7),
             (3, "ADP Non-Farm Employment Change", "High", "120K", "98K", 5.25), (3, "FOMC Statement", "High", "", "", 11),

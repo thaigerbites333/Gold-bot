@@ -8,8 +8,8 @@ from urllib.parse import quote_plus
 
 import requests
 
-from .market import UA
-from .news_guide import explain_headline, guide_event
+from market import UA
+from news_guide import explain_headline, guide_event
 
 FEEDS = [
     ("Reuters", "site:reuters.com gold OR bullion"),

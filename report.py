@@ -2,9 +2,9 @@
 import html
 from datetime import datetime, timezone
 
-from . import config
-from .charts import candle_chart
-from .news_guide import scenario_text
+import config
+from charts import candle_chart
+from news_guide import scenario_text
 
 TH_MONTH = ["", "ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."]
 TH_DAY = ["จ.", "อ.", "พ.", "พฤ.", "ศ.", "ส.", "อา."]
