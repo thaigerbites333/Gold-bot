@@ -1,0 +1,114 @@
+//@version=6
+// Gold Top-down Trend (Kit) — ใช้สูตรเดียวกับรายงาน PDF รายชั่วโมง
+// วิธีใช้: TradingView > Pine Editor > วางโค้ดนี้ > Save > Add to chart (แนะนำกราฟ OANDA:XAUUSD M15)
+indicator("Gold Top-down (Kit)", overlay = true, max_lines_count = 50, max_labels_count = 100)
+
+// ---------- Inputs ----------
+tpMinPts = input.int(200, "TP ขั้นต่ำ (points)")
+tpMaxPts = input.int(300, "TP สูงสุด (points)")
+pointVal = input.float(0.01, "1 point = $", step = 0.01)
+showEma  = input.bool(true, "แสดง EMA 20/50/200")
+showPiv  = input.bool(true, "แสดง Pivot รายวัน")
+showSig  = input.bool(true, "แสดงสัญญาณเข้า (ตามเทรนด์ใหญ่)")
+tblPos   = input.string("ขวาบน", "ตำแหน่งตาราง", options = ["ขวาบน", "ขวาล่าง", "ซ้ายบน", "ซ้ายล่าง"])
+
+// ---------- Score (เหมือนไฟล์ analysis.py) ----------
+f_score() =>
+    e20 = ta.ema(close, 20)
+    e50 = ta.ema(close, 50)
+    e200 = ta.ema(close, 200)
+    [_m, _s, h] = ta.macd(close, 12, 26, 9)
+    r = ta.rsi(close, 14)
+    sc = (close > e50 ? 1 : -1) + (e20 > e50 ? 1 : -1) + (e50 > e200 ? 1 : -1) + (h > 0 ? 1 : -1) + (r > 55 ? 1 : r < 45 ? -1 : 0)
+    [sc, r]
+
+[scD1, rD1]   = request.security(syminfo.tickerid, "D",   f_score())
+[scH4, rH4]   = request.security(syminfo.tickerid, "240", f_score())
+[scH1, rH1]   = request.security(syminfo.tickerid, "60",  f_score())
+[scM30, rM30] = request.security(syminfo.tickerid, "30",  f_score())
+[scM15, rM15] = request.security(syminfo.tickerid, "15",  f_score())
+
+bias = scD1 * 0.30 + scH4 * 0.25 + scH1 * 0.20 + scM30 * 0.15 + scM15 * 0.10
+big  = scD1 + scH4
+
+f_label(s) => s >= 3 ? "ขาขึ้นแรง" : s >= 1 ? "ขาขึ้น" : s >= -1 ? "ไซด์เวย์" : s >= -3 ? "ขาลง" : "ขาลงแรง"
+f_col(s)   => s >= 1 ? color.new(color.green, 15) : s > -1 ? color.new(color.gray, 20) : color.new(color.red, 15)
+
+side = bias >= 1 and big > 0 ? "BUY" : bias <= -1 and big < 0 ? "SELL" : "รอ"
+
+// ---------- EMA ----------
+ema20  = ta.ema(close, 20)
+ema50  = ta.ema(close, 50)
+ema200 = ta.ema(close, 200)
+plot(showEma ? ema20 : na, "EMA20", color.rgb(37, 99, 235), 2)
+plot(showEma ? ema50 : na, "EMA50", color.rgb(217, 119, 6), 2)
+plot(showEma ? ema200 : na, "EMA200", color.rgb(124, 58, 237), 1, plot.style_line)
+
+// ---------- Daily pivots ----------
+[ph, pl, pc] = request.security(syminfo.tickerid, "D", [high[1], low[1], close[1]], lookahead = barmerge.lookahead_on)
+P  = (ph + pl + pc) / 3
+R1 = 2 * P - pl
+S1 = 2 * P - ph
+R2 = P + (ph - pl)
+S2 = P - (ph - pl)
+plot(showPiv ? P : na, "P", color.new(color.gray, 30), 1, plot.style_stepline)
+plot(showPiv ? R1 : na, "R1", color.new(color.red, 40), 1, plot.style_stepline)
+plot(showPiv ? S1 : na, "S1", color.new(color.green, 40), 1, plot.style_stepline)
+plot(showPiv ? R2 : na, "R2", color.new(color.red, 65), 1, plot.style_stepline)
+plot(showPiv ? S2 : na, "S2", color.new(color.green, 65), 1, plot.style_stepline)
+plot(showPiv ? ph : na, "PDH", color.new(color.orange, 50), 1, plot.style_circles)
+plot(showPiv ? pl : na, "PDL", color.new(color.orange, 50), 1, plot.style_circles)
+
+// ---------- Entry signals: ย่อแล้วกลับตัวตามเทรนด์ใหญ่ ----------
+buySig  = side == "BUY"  and ta.crossover(close, ema20) and close > ema50 and barstate.isconfirmed
+sellSig = side == "SELL" and ta.crossunder(close, ema20) and close < ema50 and barstate.isconfirmed
+plotshape(showSig and buySig, "BUY", shape.labelup, location.belowbar, color.new(color.green, 0), text = "BUY", textcolor = color.white, size = size.tiny)
+plotshape(showSig and sellSig, "SELL", shape.labeldown, location.abovebar, color.new(color.red, 0), text = "SELL", textcolor = color.white, size = size.tiny)
+
+// ---------- TP lines on last bar ----------
+var line tp1L = na
+var line tp2L = na
+if barstate.islast and side != "รอ"
+    line.delete(tp1L)
+    line.delete(tp2L)
+    dir = side == "BUY" ? 1 : -1
+    tp1L := line.new(bar_index - 5, close + dir * tpMinPts * pointVal, bar_index + 10, close + dir * tpMinPts * pointVal, color = color.green, style = line.style_dotted)
+    tp2L := line.new(bar_index - 5, close + dir * tpMaxPts * pointVal, bar_index + 10, close + dir * tpMaxPts * pointVal, color = color.green, style = line.style_dashed)
+
+// ---------- Table ----------
+pos = tblPos == "ขวาบน" ? position.top_right : tblPos == "ขวาล่าง" ? position.bottom_right : tblPos == "ซ้ายบน" ? position.top_left : position.bottom_left
+var table t = table.new(pos, 3, 8, bgcolor = color.new(color.black, 15), border_width = 1, border_color = color.new(color.gray, 70))
+f_row(i, tf, s, r) =>
+    table.cell(t, 0, i, tf, text_color = color.white, text_size = size.small)
+    table.cell(t, 1, i, f_label(s), bgcolor = f_col(s), text_color = color.white, text_size = size.small)
+    table.cell(t, 2, i, str.tostring(r, "#") , text_color = color.silver, text_size = size.small)
+if barstate.islast
+    table.cell(t, 0, 0, "TF", text_color = color.gray, text_size = size.small)
+    table.cell(t, 1, 0, "เทรนด์", text_color = color.gray, text_size = size.small)
+    table.cell(t, 2, 0, "RSI", text_color = color.gray, text_size = size.small)
+    f_row(1, "D1", scD1, rD1)
+    f_row(2, "H4", scH4, rH4)
+    f_row(3, "H1", scH1, rH1)
+    f_row(4, "M30", scM30, rM30)
+    f_row(5, "M15", scM15, rM15)
+    table.cell(t, 0, 6, "ภาพรวม", text_color = color.white, text_size = size.small)
+    table.cell(t, 1, 6, f_label(bias) + " (" + str.tostring(bias, "#.#") + ")", bgcolor = f_col(bias), text_color = color.white, text_size = size.small)
+    table.cell(t, 2, 6, "", text_size = size.small)
+    table.cell(t, 0, 7, "แผน", text_color = color.white, text_size = size.small)
+    table.cell(t, 1, 7, side, bgcolor = side == "BUY" ? color.green : side == "SELL" ? color.red : color.gray, text_color = color.white, text_size = size.normal)
+    table.cell(t, 2, 7, "", text_size = size.small)
+
+// ---------- Alerts (แพ็กเกจฟรีใช้ได้) ----------
+// สร้าง Alert 1 อัน: Condition = "Gold Top-down (Kit)" → "Any alert() function call" → เลือกแจ้งทาง App / Email
+var string lastSide = na
+if barstate.isconfirmed and side != lastSide
+    if not na(lastSide)
+        alert("XAUUSD แผนเปลี่ยนเป็น " + side + " | ภาพรวม " + f_label(bias) + " | ราคา " + str.tostring(close, "#.##"), alert.freq_once_per_bar_close)
+    lastSide := side
+if buySig
+    alert("XAUUSD สัญญาณ BUY ตามเทรนด์ใหญ่ @ " + str.tostring(close, "#.##") + " | TP +" + str.tostring(tpMinPts) + "–" + str.tostring(tpMaxPts) + " points", alert.freq_once_per_bar_close)
+if sellSig
+    alert("XAUUSD สัญญาณ SELL ตามเทรนด์ใหญ่ @ " + str.tostring(close, "#.##") + " | TP -" + str.tostring(tpMinPts) + "–" + str.tostring(tpMaxPts) + " points", alert.freq_once_per_bar_close)
+
+alertcondition(buySig, "Gold BUY ตามเทรนด์", "XAUUSD BUY ตามเทรนด์ใหญ่ {{close}}")
+alertcondition(sellSig, "Gold SELL ตามเทรนด์", "XAUUSD SELL ตามเทรนด์ใหญ่ {{close}}")

@@ -1,0 +1,89 @@
+name: Gold Bot
+
+on:
+  schedule:
+    - cron: "3 * * * 0-5"          # รายงาน PDF ทุกชั่วโมง (นาทีที่ 3) — cron ของ GitHub เป็น UTC แต่รายงานแสดงเวลา LA
+    - cron: "11,26,41,56 * * * 0-5" # เช็คด่วนทุก 15 นาที (ข่าวแรง / ราคาวิ่งแรง)
+    - cron: "47 16 * * 0"          # สรุปประจำสัปดาห์: อาทิตย์ 09:47 LA (ช่วงหน้าร้อน) / 08:47 LA (ช่วงหน้าหนาว) — ก่อนเที่ยง
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "report / alert / weekly"
+        default: "report"
+      force:
+        description: "ส่งแม้ตลาดปิด (true/false)"
+        default: "true"
+
+concurrency:
+  group: gold-bot-${{ github.event.schedule || 'manual' }}
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GMAIL_USER: ${{ secrets.GMAIL_USER }}
+      GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+      MAIL_TO: ${{ secrets.MAIL_TO }}
+      TWELVEDATA_API_KEY: ${{ secrets.TWELVEDATA_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      QUIET_HOURS: ${{ vars.QUIET_HOURS }}
+      TP_MIN_POINTS: ${{ vars.TP_MIN_POINTS }}
+      TP_MAX_POINTS: ${{ vars.TP_MAX_POINTS }}
+      URGENT_EVENT_LEAD_MIN: ${{ vars.URGENT_EVENT_LEAD_MIN }}
+      URGENT_MOVE_ATR: ${{ vars.URGENT_MOVE_ATR }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install
+        run: |
+          pip install -r requirements.txt
+          sudo apt-get install -y -qq fonts-thai-tlwg >/dev/null 2>&1 || true
+
+      - name: Pick mode
+        id: m
+        run: |
+          MODE="report"; FORCE=""
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            MODE="${{ github.event.inputs.mode }}"
+            [ "${{ github.event.inputs.force }}" = "true" ] && FORCE="--force"
+          elif [ "${{ github.event.schedule }}" = "47 16 * * 0" ]; then
+            MODE="weekly"
+          elif [ "${{ github.event.schedule }}" != "3 * * * 0-5" ]; then
+            MODE="alert"
+          fi
+          echo "mode=$MODE" >> $GITHUB_OUTPUT
+          echo "force=$FORCE" >> $GITHUB_OUTPUT
+
+      # จำว่าแจ้งเตือนอะไรไปแล้ว จะได้ไม่ส่งซ้ำ
+      - name: Restore alert state
+        if: steps.m.outputs.mode == 'alert'
+        uses: actions/cache/restore@v4
+        with:
+          path: state
+          key: alert-state-${{ github.run_id }}
+          restore-keys: alert-state-
+
+      - name: Run
+        run: python main.py ${{ steps.m.outputs.mode }} ${{ steps.m.outputs.force }}
+
+      - name: Save alert state
+        if: always() && steps.m.outputs.mode == 'alert' && hashFiles('state/state.json') != ''
+        uses: actions/cache/save@v4
+        with:
+          path: state
+          key: alert-state-${{ github.run_id }}
+
+      - name: Keep PDF (ดูย้อนหลังได้ 3 วัน)
+        if: always() && hashFiles('out/*.pdf') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: gold-${{ steps.m.outputs.mode }}-${{ github.run_id }}
+          path: out/*.pdf
+          retention-days: 3
