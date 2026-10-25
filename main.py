@@ -80,9 +80,10 @@ def gather(demo):
     return a, source, inter, heads, sent, events
 
 
-def make_and_send(a, source, inter, heads, sent, events, args, urgent=None):
+def make_and_send(a, source, inter, heads, sent, events, args, urgent=None, label="ด่วน"):
     ai = ai_summary.summarize(a, heads, events)
-    html = report.build_html(a, heads, sent, events, inter, source, ai, urgent)
+    box = "แจ้งเตือนด่วน" if label == "ด่วน" else "สัญญาณเทรด"
+    html = report.build_html(a, heads, sent, events, inter, source, ai, urgent, box_title=box)
     os.makedirs("out", exist_ok=True)
     stamp = datetime.now(config.TZ_LOCAL).strftime("%Y%m%d-%H%M")
     pdf = report.html_to_pdf(html, f"out/gold-{'urgent' if urgent else 'report'}-{stamp}.pdf")
@@ -94,13 +95,14 @@ def make_and_send(a, source, inter, heads, sent, events, args, urgent=None):
     if urgent:
         first = re.sub(r"<[^>]+>", "", urgent[0]).split(" — ")[0].replace("★", "").replace("☆", "")
         first = re.sub(r"\s+", " ", first).strip()
-        subject = f"[ด่วน] ทอง {a['price']:,.2f} — {first[:70]}"
+        subject = f"[{label}] ทอง {a['price']:,.2f} — {first[:70]}"
     else:
         subject = f"ทอง {a['price']:,.2f} ({a['chg']['1h']:+.2f}) · {a['bias_label']} · แผน {side} · {now_l:%H:%M}"
     if args.dry_run:
         print("[dry-run] ไม่ส่งเมล | หัวข้อ:", subject)
         return
-    mailer.send(subject, report.email_body(a, sent, events, urgent), [pdf])
+    box = "แจ้งเตือนด่วน" if label == "ด่วน" else "สัญญาณเทรด"
+    mailer.send(subject, report.email_body(a, sent, events, urgent, box_title=box), [pdf])
 
 
 def cmd_report(args):
@@ -113,6 +115,41 @@ def cmd_report(args):
             print("อยู่ในช่วงงดส่ง (QUIET_HOURS)")
             return
     make_and_send(*gather(args.demo), args)
+
+
+SIDE_TH = {"BUY": "BUY", "SELL": "SELL", "WAIT": "รอ"}
+
+
+def check_signals(a, st):
+    """สัญญาณเหมือน TradingView: แผนเปลี่ยน + ราคาตัด EMA20 ตามเทรนด์ใหญ่ (แท่ง M15 ที่ปิดแล้ว)"""
+    out = []
+    m = a["frames"]["M15"]
+    if len(m) < 3:
+        return out
+    bar, prev = m.iloc[-2], m.iloc[-3]          # แท่งล่าสุดที่ปิดแล้ว / แท่งก่อนหน้า
+    t_close = m.index[-2] + timedelta(minutes=15)
+    stamp = m.index[-2].strftime("%Y%m%d%H%M")
+    p = a["plan"]
+    side = p["side"]
+    last = st.get("last_side")
+    if last and side != last:
+        out.append((f"แผนเปลี่ยน: <b>{SIDE_TH.get(last, last)} → {SIDE_TH[side]}</b> · ภาพรวม {a['bias_label']} "
+                    f"· ราคา {a['price']:,.2f}" + (f" · {report.e(p['entry_text'])}" if side != "WAIT" else ""),
+                    f"sd-{stamp}-{side}"))
+    st["last_side"] = side
+
+    sld = p.get("sl_dist") or 0
+    tp1 = config.TP_POINTS[0] * config.POINT_VALUE
+    tp2 = config.TP_POINTS[1] * config.POINT_VALUE
+    c = float(bar["close"])
+    when = report.tdt(t_close.to_pydatetime(), with_day=False)
+    if side == "BUY" and prev["close"] <= prev["ema20"] and c > bar["ema20"] and c > bar["ema50"]:
+        out.append((f"สัญญาณ <b>BUY</b> ตามเทรนด์ — แท่ง M15 ปิด {when} LA ยืนเหนือ EMA20 "
+                    f"· เข้า ~{c:,.2f} · SL {c - sld:,.2f} · TP {c + tp1:,.2f} / {c + tp2:,.2f}", f"sg-{stamp}-BUY"))
+    if side == "SELL" and prev["close"] >= prev["ema20"] and c < bar["ema20"] and c < bar["ema50"]:
+        out.append((f"สัญญาณ <b>SELL</b> ตามเทรนด์ — แท่ง M15 ปิด {when} LA หลุดใต้ EMA20 "
+                    f"· เข้า ~{c:,.2f} · SL {c + sld:,.2f} · TP {c - tp1:,.2f} / {c - tp2:,.2f}", f"sg-{stamp}-SELL"))
+    return out
 
 
 def cmd_alert(args):
@@ -157,15 +194,23 @@ def cmd_alert(args):
         reasons.append(f"ราคาวิ่งแรง: แท่ง H1 นี้กว้าง {rng:.2f} (≈{rng / atr_h1:.1f} เท่าของ ATR {atr_h1:.2f})")
         keys.append(k)
 
-    if not reasons:
-        print("ไม่มีเหตุด่วน")
-        return
-    print("ด่วน:", *reasons, sep="\n - ")
-    make_and_send(a, source, inter, heads, sent, events, args, urgent=reasons[:5])
-    if not args.dry_run or args.demo:
-        for k in keys:
-            done[k] = now.isoformat()
+    sig_reasons, sig_keys = [], []
+    for txt, k in check_signals(a, st):
+        if k not in done:
+            sig_reasons.append(txt)
+            sig_keys.append(k)
+
+    if not reasons and not sig_reasons:
+        print("ไม่มีเหตุด่วน / ไม่มีสัญญาณ")
         save_state(st)
+        return
+    label = "ด่วน" if reasons else "สัญญาณ"
+    allr = sig_reasons + reasons
+    print(label + ":", *allr, sep="\n - ")
+    make_and_send(a, source, inter, heads, sent, events, args, urgent=allr[:6], label=label)
+    for k in keys + sig_keys:
+        done[k] = now.isoformat()
+    save_state(st)
 
 
 def cmd_weekly(args):

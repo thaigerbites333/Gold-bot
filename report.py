@@ -106,7 +106,7 @@ a { color:#1d4ed8; text-decoration:none; }
 """
 
 
-def build_html(a, headlines, sent, events, inter, source, ai=None, urgent_reasons=None):
+def build_html(a, headlines, sent, events, inter, source, ai=None, urgent_reasons=None, box_title="แจ้งเตือนด่วน"):
     now = datetime.now(timezone.utc)
     t, p = a["trends"], a["plan"]
     bullets = [e(b) for b in (ai or {}).get("summary") or []] or simple_bullets(a, sent, events, inter)
@@ -122,7 +122,7 @@ def build_html(a, headlines, sent, events, inter, source, ai=None, urgent_reason
     urgent_html = ""
     if urgent_reasons:
         urgent_html = ("<div class='card' style='border:2px solid #b91c1c;background:#fef2f2;margin-top:10px'>"
-                       "<b class='warn'>แจ้งเตือนด่วน</b><ul>" + "".join(f"<li>{r}</li>" for r in urgent_reasons) +
+                       f"<b class='warn'>{box_title}</b><ul>" + "".join(f"<li>{r}</li>" for r in urgent_reasons) +
                        "</ul></div>")
 
     rows = ""
@@ -198,7 +198,7 @@ def build_html(a, headlines, sent, events, inter, source, ai=None, urgent_reason
     ch_m15 = candle_chart(a["frames"]["M15"], "M15 - last 24h (entry)", a, bars=96, height=2.7)
     ch_h4 = candle_chart(a["frames"]["H4"], "H4 - big picture (~3 weeks)", a, bars=110, height=2.2, plan=False)
 
-    title = "แจ้งเตือนด่วน ทองคำ XAUUSD" if urgent_reasons else "รายงานทองคำ XAUUSD รายชั่วโมง"
+    title = f"{box_title} ทองคำ XAUUSD" if urgent_reasons else "รายงานทองคำ XAUUSD รายชั่วโมง"
     return f"""<!doctype html><html lang="th"><head><meta charset="utf-8">
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700;800&display=swap" rel="stylesheet">
 <title>{title}</title><style>{CSS}</style></head><body>
@@ -273,7 +273,7 @@ def html_to_pdf(html_str, out_path):
     return out_path
 
 
-def email_body(a, sent, events, urgent_reasons=None):
+def email_body(a, sent, events, urgent_reasons=None, box_title="แจ้งเตือนด่วน"):
     """ข้อความสั้นในตัวเมล (อ่านบนมือถือได้ทันที)"""
     p = a["plan"]
     side_th = {"BUY": "BUY (ซื้อตามเทรนด์)", "SELL": "SELL (ขายตามเทรนด์)", "WAIT": "รอ (ยังไม่ชัด)"}[p["side"]]
@@ -281,7 +281,7 @@ def email_body(a, sent, events, urgent_reasons=None):
     lines = []
     if urgent_reasons:
         lines.append("<div style='background:#fef2f2;border:2px solid #b91c1c;padding:10px;border-radius:8px'>"
-                     "<b style='color:#b91c1c'>แจ้งเตือนด่วน</b><ul>" +
+                     f"<b style='color:#b91c1c'>{box_title}</b><ul>" +
                      "".join(f"<li>{r}</li>" for r in urgent_reasons) + "</ul></div>")
     lines.append(f"<p style='font-size:22px;margin:8px 0'><b>{a['price']:,.2f}</b> "
                  f"<span style='color:#6b7280;font-size:14px'>{sgn(a['chg']['1h'])} (1ชม.) · {sgn(a['chg']['24h'])} (24ชม.)</span></p>")
